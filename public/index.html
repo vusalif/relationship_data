@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relationship Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schoolbell&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="login-container" class="container hidden">
+        <div class="card drawn-box">
+            <h1 class="drawn-title">Relationship Analytics</h1>
+            <p>You need to log in via Telegram first.</p>
+            <p class="small text-muted">Use /webapp in the Telegram bot to get your magic link.</p>
+        </div>
+    </div>
+
+    <div id="app-container" class="container hidden">
+        <header class="card drawn-box header-box">
+            <h1 class="drawn-title">Your Relationships Tracker</h1>
+            <div class="user-info">
+                Logged in as <span id="username-display" class="drawn-text"></span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <aside class="sidebar card drawn-box">
+                <h2 class="drawn-title">People</h2>
+                <ul id="people-list" class="people-list">
+                    <!-- Javascript populates this -->
+                </ul>
+
+                <div class="add-person-form">
+                    <input type="text" id="new-person-name" class="drawn-input" placeholder="Name (e.g. Pam)">
+                    <button id="add-person-btn" class="drawn-button action-btn">Add Person</button>
+                </div>
+            </aside>
+
+            <main class="content card drawn-box">
+                <div class="chart-header">
+                    <h2 class="drawn-title">Analytics Detailed</h2>
+                    <select id="person-filter" class="drawn-input small-select">
+                        <option value="all">Everyone</option>
+                    </select>
+                </div>
+
+                <div class="stats-container" id="stats-container">
+                    <!-- Javascript stats -->
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="scoresChart"></canvas>
+                </div>
+
+                <div class="secondary-charts-container mt-2 hidden" id="secondary-charts-container">
+                    <h3 class="drawn-title subtitle">Averages Breakdown</h3>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="avgChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="data-editor mt-2">
+                    <h3 class="drawn-title subtitle">Edit Scores</h3>
+                    <div id="edit-scores-container">
+                        <!-- Javascript populates this -->
+                        <p class="text-muted small">Select a person from the left to edit their scores.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Edit Score Modal -->
+    <div id="score-modal" class="modal hidden">
+        <div class="modal-content drawn-box">
+            <h3 class="drawn-title">Update Score</h3>
+            <p id="modal-person-name"></p>
+            <input type="hidden" id="modal-person-id">
+            <input type="text" id="modal-date" class="drawn-input mb-1" placeholder="YYYY-MM-DD" readonly>
+            <label for="modal-score" class="form-label">Score (0-10):</label>
+            <input type="number" step="0.1" min="0" max="10" id="modal-score" class="drawn-input mb-1">
+            <div class="modal-actions">
+                <button id="save-score-btn" class="drawn-button primary">Save</button>
+                <button id="close-modal-btn" class="drawn-button secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
