@@ -37,36 +37,112 @@ bot.command('help', (ctx) => {
 
 bot.command('list', async (ctx) => {
     const chatId = ctx.chat.id.toString();
-    const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
-    if (persons.length === 0) {
-        return ctx.reply('You have no items in your list. Use /add to add something.');
-    }
-    let msg = '📋 Your Favorites:\n\n';
-    for (let p of persons) {
-        const scores = await getQuery(`SELECT score, date FROM scores WHERE person_id = ? ORDER BY date DESC LIMIT 1`, [p.id]);
-        if (scores.length > 0) {
-            msg += `- ${p.name}: ${scores[0].score}/10 (Last logged: ${scores[0].date})\n`;
+    const lists = await getQuery(`SELECT id, name FROM lists WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
+
+    if (lists.length === 0) {
+        const headlessItems = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ?`, [chatId]);
+        if (headlessItems.length === 0) {
+            return ctx.reply('You have no items in your lists. Use /add to add something.');
         } else {
-            msg += `- ${p.name}: No scores yet\n`;
+            // Ad-hoc display
+            lists.push({ id: 0, name: 'My Favorites' });
         }
     }
-    ctx.reply(msg);
+
+    let msg = '📋 Your Favorites:\n\n';
+
+    for (let l of lists) {
+        msg += `📁 *${l.name}*\n`;
+        const items = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? AND (list_id = ? OR (? = 0 AND (list_id IS NULL OR list_id = 0))) ORDER BY id ASC`, [chatId, l.id, l.id]);
+        if (items.length === 0) {
+            msg += `  (Empty)\n`;
+        } else {
+            for (let p of items) {
+                const scores = await getQuery(`SELECT score, date FROM scores WHERE person_id = ? ORDER BY date DESC LIMIT 1`, [p.id]);
+                if (scores.length > 0) {
+                    msg += `  - ${p.name}: ${scores[0].score}/10 (Last logged: ${scores[0].date})\n`;
+                } else {
+                    msg += `  - ${p.name}: No scores yet\n`;
+                }
+            }
+        }
+        msg += `\n`;
+    }
+
+    const MAX_LEN = 4000;
+    while (msg.length > 0) {
+        await ctx.reply(msg.substring(0, MAX_LEN), { parse_mode: 'Markdown' });
+        msg = msg.substring(MAX_LEN);
+    }
 });
 
 bot.command(['add', 'addperson'], async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
     if (!name) return ctx.reply('Please specify a name: /add Inception');
-    await runQuery(`INSERT INTO persons (chat_id, name) VALUES (?, ?)`, [chatId, name]);
-    ctx.reply(`Added ${name} to your tracking list.`);
+
+    let lists = await getQuery(`SELECT id, name FROM lists WHERE chat_id = ?`, [chatId]);
+
+    // Auto-migrate or auto-create first list if none exist
+    if (lists.length === 0) {
+        const res = await runQuery(`INSERT INTO lists (chat_id, name) VALUES (?, ?)`, [chatId, 'My Favorites']);
+        lists = [{ id: res.lastID, name: 'My Favorites' }];
+    }
+
+    if (lists.length === 1) {
+        await runQuery(`INSERT INTO persons (chat_id, list_id, name) VALUES (?, ?, ?)`, [chatId, lists[0].id, name]);
+        return ctx.reply(`Added ${name} to your "${lists[0].name}" list.`);
+    }
+
+    // Multiple lists: Ask the user
+    // Make sure button payload isn't too long (Telegram limit ~64 chars)
+    const buttons = lists.map(l => Markup.button.callback(l.name, `additem_${l.id}_${name.substring(0, 30)}`));
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+
+    ctx.reply(`Which list do you want to add "${name}" to?`, Markup.inlineKeyboard(rows));
+});
+
+bot.action(/additem_(\d+)_(.+)/, async (ctx) => {
+    const chatId = ctx.chat.id.toString();
+    const listId = ctx.match[1];
+    const name = ctx.match[2];
+
+    const lists = await getQuery(`SELECT id, name FROM lists WHERE id = ? AND chat_id = ?`, [listId, chatId]);
+    if (lists.length === 0) return ctx.answerCbQuery('List not found.');
+
+    await runQuery(`INSERT INTO persons (chat_id, list_id, name) VALUES (?, ?, ?)`, [chatId, listId, name]);
+    ctx.answerCbQuery(`Added ${name}`);
+    ctx.editMessageText(`Added ${name} to your "${lists[0].name}" list.`);
 });
 
 bot.command(['remove', 'removeperson'], async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
     if (!name) return ctx.reply('Please specify a name: /remove Inception');
-    await runQuery(`DELETE FROM persons WHERE chat_id = ? AND name = ?`, [chatId, name]);
-    ctx.reply(`Removed ${name} from your list.`);
+
+    const items = await getQuery(`SELECT p.id, p.name, COALESCE(l.name, 'My Favorites') as list_name FROM persons p LEFT JOIN lists l ON p.list_id = l.id WHERE p.chat_id = ? AND p.name = ? COLLATE NOCASE`, [chatId, name]);
+
+    if (items.length === 0) return ctx.reply(`Could not find "${name}" in your lists.`);
+
+    if (items.length === 1) {
+        await runQuery(`DELETE FROM scores WHERE person_id = ?`, [items[0].id]);
+        await runQuery(`DELETE FROM persons WHERE id = ?`, [items[0].id]);
+        return ctx.reply(`Removed ${name} from your list.`);
+    }
+
+    const buttons = items.map(i => Markup.button.callback(`From ` + i.list_name, `rmitem_${i.id}`));
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    ctx.reply(`"${name}" is in multiple lists. Remove from which list?`, Markup.inlineKeyboard(rows));
+});
+
+bot.action(/rmitem_(\d+)/, async (ctx) => {
+    const personId = ctx.match[1];
+    await runQuery(`DELETE FROM scores WHERE person_id = ?`, [personId]);
+    await runQuery(`DELETE FROM persons WHERE id = ?`, [personId]);
+    ctx.answerCbQuery('Item removed');
+    ctx.editMessageText('Item removed from the list.');
 });
 
 bot.command(['view', 'viewperson'], async (ctx) => {
@@ -74,28 +150,28 @@ bot.command(['view', 'viewperson'], async (ctx) => {
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
     if (!name) return ctx.reply('Please specify a name: /view Inception');
 
-    // Find the person
-    const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? AND name = ? COLLATE NOCASE`, [chatId, name]);
+    const persons = await getQuery(`SELECT p.id, p.name, COALESCE(l.name, 'My Favorites') as list_name FROM persons p LEFT JOIN lists l ON p.list_id = l.id WHERE p.chat_id = ? AND p.name = ? COLLATE NOCASE`, [chatId, name]);
     if (persons.length === 0) {
-        return ctx.reply(`Could not find "${name}" in your list.`);
+        return ctx.reply(`Could not find "${name}" in your lists.`);
     }
 
-    const person = persons[0];
-    const scores = await getQuery(`SELECT score, date FROM scores WHERE person_id = ? ORDER BY date ASC`, [person.id]);
-
-    if (scores.length === 0) {
-        return ctx.reply(`No scores logged for ${person.name} yet.`);
+    let msg = '';
+    for (let person of persons) {
+        msg += `📊 *History for [${person.list_name}] ${person.name}*\n\n`;
+        const scores = await getQuery(`SELECT score, date FROM scores WHERE person_id = ? ORDER BY date ASC`, [person.id]);
+        if (scores.length === 0) {
+            msg += `  No scores logged yet.\n\n`;
+            continue;
+        }
+        for (let s of scores) {
+            msg += `  - ${s.date}: ${s.score}/10\n`;
+        }
+        msg += `\n`;
     }
 
-    let msg = `📊 Full History for ${person.name}:\n\n`;
-    for (let s of scores) {
-        msg += `- ${s.date}: ${s.score}/10\n`;
-    }
-
-    // Chunking to prevent hitting Telegram's character limits for very long lists
     const MAX_LEN = 4000;
     while (msg.length > 0) {
-        await ctx.reply(msg.substring(0, MAX_LEN));
+        await ctx.reply(msg.substring(0, MAX_LEN), { parse_mode: 'Markdown' });
         msg = msg.substring(MAX_LEN);
     }
 });
@@ -123,7 +199,7 @@ bot.command('setcycle', async (ctx) => {
 
     const type = parts[0].toLowerCase();
     const time = parts[1] || '20:00';
-    if (!['daily', 'weekly'].includes(type)) return ctx.reply('Cycle must be easy daily or weekly.');
+    if (!['daily', 'weekly'].includes(type)) return ctx.reply('Cycle must be either daily or weekly.');
 
     await runQuery(`UPDATE users SET cycle_type = ?, cycle_time = ? WHERE chat_id = ?`, [type, time, chatId]);
     ctx.reply(`Your notification cycle is set to ${type} at ${time}.`);
@@ -139,14 +215,25 @@ async function startScoringFlow(chatId, ctx = null, date = null) {
         const d = new Date();
         date = d.toISOString().split('T')[0];
     }
-    const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
+    const persons = await getQuery(`
+        SELECT p.id, p.name, COALESCE(l.name, 'My Favorites') as list_name 
+        FROM persons p 
+        LEFT JOIN lists l ON p.list_id = l.id 
+        WHERE p.chat_id = ? 
+        ORDER BY COALESCE(l.id, 0) ASC, p.id ASC
+    `, [chatId]);
+
     if (persons.length === 0) {
-        if (ctx) ctx.reply('You have nothing in your list. Use /add to add something.');
+        if (ctx) ctx.reply('You have nothing in your lists to score. Use /add to add something.');
         return;
     }
+
     await runQuery(`INSERT OR REPLACE INTO pending_scores (chat_id, person_index, date) VALUES (?, ?, ?)`, [chatId, 0, date]);
+
     const name = persons[0].name;
-    const msg = `It's time to score ${name} for ${date}! Reply with a score out of 10.`;
+    const listName = persons[0].list_name;
+    const msg = `It's time to score [${listName}] ${name} for ${date}! Reply with a score out of 10.`;
+
     if (ctx) {
         ctx.reply(msg);
     } else {
@@ -167,17 +254,30 @@ bot.on('text', async (ctx) => {
             return ctx.reply('Please enter a valid number between 0 and 10.');
         }
 
-        const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
+        const persons = await getQuery(`
+            SELECT p.id, p.name, COALESCE(l.name, 'My Favorites') as list_name 
+            FROM persons p 
+            LEFT JOIN lists l ON p.list_id = l.id 
+            WHERE p.chat_id = ? 
+            ORDER BY COALESCE(l.id, 0) ASC, p.id ASC
+        `, [chatId]);
+
         if (state.person_index < persons.length) {
             const personId = persons[state.person_index].id;
             // Save score
-            await runQuery(`INSERT INTO scores (person_id, score, date) VALUES (?, ?, ?)`, [personId, score, state.date]);
+            // check existing
+            const existing = await getQuery(`SELECT id FROM scores WHERE person_id = ? AND date = ?`, [personId, state.date]);
+            if (existing.length > 0) {
+                await runQuery(`UPDATE scores SET score = ? WHERE id = ?`, [score, existing[0].id]);
+            } else {
+                await runQuery(`INSERT INTO scores (person_id, score, date) VALUES (?, ?, ?)`, [personId, score, state.date]);
+            }
 
             const nextIndex = state.person_index + 1;
             if (nextIndex < persons.length) {
                 // Ask for next person
                 await runQuery(`UPDATE pending_scores SET person_index = ? WHERE chat_id = ?`, [nextIndex, chatId]);
-                ctx.reply(`Score saved! Now, what is the score for ${persons[nextIndex].name}? (Out of 10)`);
+                ctx.reply(`Score saved! Now, what is the score for [${persons[nextIndex].list_name}] ${persons[nextIndex].name}? (Out of 10)`);
             } else {
                 // Done
                 await runQuery(`DELETE FROM pending_scores WHERE chat_id = ?`, [chatId]);

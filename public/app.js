@@ -6,7 +6,8 @@ const colors = [
 let state = {
     token: null,
     user: null,
-    data: [],
+    lists: [],
+    selectedListId: null,
     selectedPersonId: 'all',
     chart: null,
     avgChart: null
@@ -76,11 +77,50 @@ async function checkAuth() {
 }
 
 async function loadData() {
-    state.data = await apiFetch('/api/data');
+    state.lists = await apiFetch('/api/data');
+    if (state.lists.length > 0) {
+        if (!state.selectedListId || !state.lists.find(l => l.id.toString() === state.selectedListId)) {
+            state.selectedListId = state.lists[0].id.toString();
+        }
+    } else {
+        state.selectedListId = null;
+    }
+
+    state.selectedPersonId = 'all';
+
+    renderLists();
     renderSidebar();
     renderChart();
     renderDetailedAnalytics();
     renderEditScores();
+}
+
+function getCurrentListItems() {
+    if (!state.selectedListId) return [];
+    const list = state.lists.find(l => l.id.toString() === state.selectedListId);
+    return list ? list.items : [];
+}
+
+function renderLists() {
+    const listSelector = document.getElementById('list-selector');
+    const delBtn = document.getElementById('delete-list-btn');
+    listSelector.innerHTML = '';
+
+    if (state.lists.length === 0) {
+        delBtn.style.display = 'none';
+        return;
+    }
+
+    delBtn.style.display = 'block';
+
+    state.lists.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.innerText = l.name;
+        listSelector.appendChild(opt);
+    });
+
+    listSelector.value = state.selectedListId;
 }
 
 function renderSidebar() {
@@ -88,10 +128,11 @@ function renderSidebar() {
     list.innerHTML = '';
 
     const filter = document.getElementById('person-filter');
-    const oldFilterVal = filter.value;
     filter.innerHTML = '<option value="all">All Items</option>';
 
-    state.data.forEach((p, idx) => {
+    const items = getCurrentListItems();
+
+    items.forEach((p, idx) => {
         const li = document.createElement('li');
         li.className = 'person-item';
         if (state.selectedPersonId === p.id.toString()) {
@@ -145,12 +186,14 @@ function renderChart() {
         state.chart.destroy();
     }
 
+    const items = getCurrentListItems();
+
     // Get all unique dates
     const allDates = new Set();
-    state.data.forEach(p => p.scores.forEach(s => allDates.add(s.date)));
+    items.forEach(p => p.scores.forEach(s => allDates.add(s.date)));
     const labels = Array.from(allDates).sort();
 
-    const datasets = state.data
+    const datasets = items
         .filter(p => state.selectedPersonId === 'all' || p.id.toString() === state.selectedPersonId)
         .map((p, i) => {
             const dataMap = {};
@@ -209,23 +252,20 @@ function renderDetailedAnalytics() {
     const statsContainer = document.getElementById('stats-container');
     const secondaryChartsContainer = document.getElementById('secondary-charts-container');
 
-    // Clear out old data
     statsContainer.innerHTML = '';
 
-    // Calculate aggregations based on filter
+    const items = getCurrentListItems();
     let processedData = [];
     if (state.selectedPersonId === 'all') {
-        processedData = state.data;
+        processedData = items;
     } else {
-        processedData = state.data.filter(p => p.id.toString() === state.selectedPersonId);
+        processedData = items.filter(p => p.id.toString() === state.selectedPersonId);
     }
 
     let totalScoresCount = 0;
     let sumOfAllScores = 0;
     let highestScore = 0;
     let lowestScore = 10;
-
-    // Arrays for bar chart
     let averagesPerPerson = [];
 
     processedData.forEach(p => {
@@ -271,7 +311,6 @@ function renderDetailedAnalytics() {
         </div>
     `;
 
-    // Only show secondary chart if 'all' is selected and there's data for comparison
     if (state.selectedPersonId === 'all' && averagesPerPerson.length > 0) {
         secondaryChartsContainer.classList.remove('hidden');
         renderBarChart(averagesPerPerson);
@@ -329,7 +368,8 @@ function renderEditScores() {
         return;
     }
 
-    const person = state.data.find(p => p.id.toString() === state.selectedPersonId);
+    const items = getCurrentListItems();
+    const person = items.find(p => p.id.toString() === state.selectedPersonId);
     if (!person) return;
 
     if (person.scores.length === 0) {
@@ -370,7 +410,6 @@ function openModal(person, date, score) {
     document.getElementById('modal-person-name').innerText = person.name;
     document.getElementById('modal-person-id').value = person.id;
 
-    // Check if score exists for date
     let existingDate = date;
     if (!score) {
         const existingInput = prompt('Enter date (YYYY-MM-DD):', date);
@@ -387,12 +426,45 @@ function openModal(person, date, score) {
 }
 
 function setupEventListeners() {
+    document.getElementById('list-selector').onchange = (e) => {
+        state.selectedListId = e.target.value;
+        state.selectedPersonId = 'all';
+        renderSidebar();
+        renderChart();
+        renderDetailedAnalytics();
+        renderEditScores();
+    };
+
+    document.getElementById('add-list-btn').onclick = async () => {
+        const nameInput = document.getElementById('new-list-name');
+        const name = nameInput.value.trim();
+        if (!name) return;
+
+        const res = await apiFetch('/api/list', 'POST', { name });
+        state.selectedListId = res.id.toString();
+        nameInput.value = '';
+        loadData();
+    };
+
+    document.getElementById('delete-list-btn').onclick = async () => {
+        if (!state.selectedListId) return;
+        const listName = state.lists.find(l => l.id.toString() === state.selectedListId)?.name;
+        if (confirm(`Are you sure you want to delete the list "${listName}" AND all its items?`)) {
+            await apiFetch(`/api/list/${state.selectedListId}`, 'DELETE');
+            state.selectedListId = null;
+            state.selectedPersonId = 'all';
+            loadData();
+        }
+    };
+
     document.getElementById('add-person-btn').onclick = async () => {
+        if (!state.selectedListId) return alert('Please create or select a list first.');
+
         const nameInput = document.getElementById('new-person-name');
         const name = nameInput.value.trim();
         if (!name) return;
 
-        await apiFetch('/api/person', 'POST', { name });
+        await apiFetch('/api/person', 'POST', { name, list_id: state.selectedListId });
         nameInput.value = '';
         loadData();
     };

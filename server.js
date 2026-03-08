@@ -47,23 +47,74 @@ app.get('/api/me', authUser, (req, res) => {
 
 app.get('/api/data', authUser, async (req, res) => {
     try {
-        const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ?`, [req.user.chat_id]);
+        let lists = await getQuery(`SELECT id, name FROM lists WHERE chat_id = ?`, [req.user.chat_id]);
 
-        for (let p of persons) {
-            p.scores = await getQuery(`SELECT id, score, date FROM scores WHERE person_id = ? ORDER BY date ASC`, [p.id]);
+        // Migrate items without list
+        const personsWithoutList = await getQuery(`SELECT id FROM persons WHERE chat_id = ? AND (list_id IS NULL OR list_id = 0)`, [req.user.chat_id]);
+        if (personsWithoutList.length > 0) {
+            let defaultList = lists.find(l => l.name === 'My Favorites');
+            if (!defaultList) {
+                const result = await runQuery(`INSERT INTO lists (chat_id, name) VALUES (?, ?)`, [req.user.chat_id, 'My Favorites']);
+                defaultList = { id: result.id, name: 'My Favorites' };
+                lists.push(defaultList);
+            }
+            await runQuery(`UPDATE persons SET list_id = ? WHERE chat_id = ? AND (list_id IS NULL OR list_id = 0)`, [defaultList.id, req.user.chat_id]);
         }
-        res.json(persons);
+
+        // Always ensure at least one list exists
+        if (lists.length === 0) {
+            const result = await runQuery(`INSERT INTO lists (chat_id, name) VALUES (?, ?)`, [req.user.chat_id, 'My Favorites']);
+            lists.push({ id: result.id, name: 'My Favorites' });
+        }
+
+        // Fetch items and scores for each list
+        for (let l of lists) {
+            l.items = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? AND list_id = ? ORDER BY id ASC`, [req.user.chat_id, l.id]);
+            for (let p of l.items) {
+                p.scores = await getQuery(`SELECT id, score, date FROM scores WHERE person_id = ? ORDER BY date ASC`, [p.id]);
+            }
+        }
+
+        res.json(lists);
     } catch (e) {
         res.status(500).json({ error: 'Server error', message: e.message });
     }
 });
 
-app.post('/api/person', authUser, async (req, res) => {
+app.post('/api/list', authUser, async (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
     try {
-        const result = await runQuery(`INSERT INTO persons (chat_id, name) VALUES (?, ?)`, [req.user.chat_id, name]);
+        const result = await runQuery(`INSERT INTO lists (chat_id, name) VALUES (?, ?)`, [req.user.chat_id, name]);
         res.json({ id: result.id, name });
+    } catch (e) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.delete('/api/list/:id', authUser, async (req, res) => {
+    try {
+        const items = await getQuery(`SELECT id FROM persons WHERE list_id = ? AND chat_id = ?`, [req.params.id, req.user.chat_id]);
+        for (let item of items) {
+            await runQuery(`DELETE FROM scores WHERE person_id = ?`, [item.id]);
+        }
+        await runQuery(`DELETE FROM persons WHERE list_id = ? AND chat_id = ?`, [req.params.id, req.user.chat_id]);
+        await runQuery(`DELETE FROM lists WHERE id = ? AND chat_id = ?`, [req.params.id, req.user.chat_id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.post('/api/person', authUser, async (req, res) => {
+    const { name, list_id } = req.body;
+    if (!name || list_id == null) return res.status(400).json({ error: 'Name and list_id are required' });
+    try {
+        const lists = await getQuery(`SELECT id FROM lists WHERE id = ? AND chat_id = ?`, [list_id, req.user.chat_id]);
+        if (lists.length === 0) return res.status(400).json({ error: 'Invalid list' });
+
+        const result = await runQuery(`INSERT INTO persons (chat_id, list_id, name) VALUES (?, ?, ?)`, [req.user.chat_id, list_id, name]);
+        res.json({ id: result.id, name, list_id });
     } catch (e) {
         res.status(500).json({ error: 'Server error' });
     }

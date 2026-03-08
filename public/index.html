@@ -46,7 +46,21 @@
 
         <div class="grid">
             <aside class="sidebar card drawn-box">
-                <h2 class="drawn-title">Favorites</h2>
+                <div class="list-section"
+                    style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px dashed #333;">
+                    <h2 class="drawn-title" style="margin-top: 0; font-size: 1.5rem;">Your Lists</h2>
+                    <select id="list-selector" class="drawn-input" style="width: 100%; margin-bottom: 10px;"></select>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <input type="text" id="new-list-name" class="drawn-input" placeholder="New list name"
+                            style="flex: 1;">
+                        <button id="add-list-btn" class="drawn-button action-btn" style="padding: 10px;">Add</button>
+                    </div>
+                    <button id="delete-list-btn" class="drawn-button"
+                        style="width: 100%; color: #dc3545; border-color: #dc3545; display: none;">Delete Current
+                        List</button>
+                </div>
+
+                <h2 class="drawn-title" style="font-size: 1.5rem;">Items in List</h2>
                 <ul id="people-list" class="people-list">
                     <!-- Javascript populates this -->
                 </ul>
