@@ -26,12 +26,12 @@ bot.start(async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const token = uuidv4();
     await runQuery(`INSERT OR IGNORE INTO users (chat_id, username, web_token) VALUES (?, ?, ?)`, [chatId, ctx.from.username || '', token]);
-    const helpText = `Welcome to Favorite Things Tracker! 📊\n\nI am your personal assistant for tracking and analyzing your favorite things (movies, series, relationships, etc.) over time.\n\nHere is what you can do:\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this list of commands again`;
+    const helpText = `Welcome to Favorite Things Tracker! 📊\n\nI am your personal assistant for tracking and analyzing your favorite things (movies, series, relationships, etc.) over time.\n\nHere is what you can do:\n/addlist <name> - Create a new list\n/deletelist <name> - Delete a list\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this list of commands again`;
     ctx.reply(helpText);
 });
 
 bot.command('help', (ctx) => {
-    const helpText = `Here is what you can do:\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this message again`;
+    const helpText = `Here is what you can do:\n/addlist <name> - Create a new list\n/deletelist <name> - Delete a list\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this message again`;
     ctx.reply(helpText);
 });
 
@@ -74,6 +74,35 @@ bot.command('list', async (ctx) => {
         await ctx.reply(msg.substring(0, MAX_LEN), { parse_mode: 'Markdown' });
         msg = msg.substring(MAX_LEN);
     }
+});
+
+bot.command('addlist', async (ctx) => {
+    const chatId = ctx.chat.id.toString();
+    const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
+    if (!name) return ctx.reply('Please specify a name: /addlist Movies');
+
+    await runQuery(`INSERT INTO lists (chat_id, name) VALUES (?, ?)`, [chatId, name]);
+    ctx.reply(`Created the list "${name}". Use /add to add items to it!`);
+});
+
+bot.command('deletelist', async (ctx) => {
+    const chatId = ctx.chat.id.toString();
+    const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
+    if (!name) return ctx.reply('Please specify a name: /deletelist Movies');
+
+    const lists = await getQuery(`SELECT id FROM lists WHERE chat_id = ? AND name = ? COLLATE NOCASE`, [chatId, name]);
+    if (lists.length === 0) return ctx.reply(`Could not find a list named "${name}".`);
+
+    const listId = lists[0].id;
+    const items = await getQuery(`SELECT id FROM persons WHERE list_id = ? AND chat_id = ?`, [listId, chatId]);
+
+    for (let item of items) {
+        await runQuery(`DELETE FROM scores WHERE person_id = ?`, [item.id]);
+    }
+    await runQuery(`DELETE FROM persons WHERE list_id = ? AND chat_id = ?`, [listId, chatId]);
+    await runQuery(`DELETE FROM lists WHERE id = ? AND chat_id = ?`, [listId, chatId]);
+
+    ctx.reply(`Deleted the list "${name}" and all of its items.`);
 });
 
 bot.command(['add', 'addperson'], async (ctx) => {
