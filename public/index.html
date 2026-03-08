@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relationship Analytics</title>
+    <title>Favorite Things Tracker</title>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
@@ -19,9 +19,9 @@
 <body>
     <div id="login-container" class="container hidden" style="text-align: center; margin-top: 10vh;">
         <div class="card drawn-box" style="display: inline-block; padding: 40px; max-width: 400px; width: 100%;">
-            <h1 class="drawn-title">Relationship Analytics</h1>
+            <h1 class="drawn-title">Favorite Things Tracker</h1>
             <p style="margin-bottom: 30px; font-size: 1.2rem; font-family: 'Schoolbell', cursive;">Track and analyze
-                your relationships over time.</p>
+                your favorite things over time.</p>
             <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                 <a href="https://t.me/relationships_databot" target="_blank" class="drawn-button action-btn"
                     style="text-decoration: none; width: 100%; box-sizing: border-box; display: inline-block;">🤖 Start
@@ -38,7 +38,7 @@
 
     <div id="app-container" class="container hidden">
         <header class="card drawn-box header-box">
-            <h1 class="drawn-title">Your Relationships Tracker</h1>
+            <h1 class="drawn-title">Favorite Things Tracker</h1>
             <div class="user-info">
                 Logged in as <span id="username-display" class="drawn-text"></span>
             </div>
@@ -46,14 +46,14 @@
 
         <div class="grid">
             <aside class="sidebar card drawn-box">
-                <h2 class="drawn-title">People</h2>
+                <h2 class="drawn-title">Favorites</h2>
                 <ul id="people-list" class="people-list">
                     <!-- Javascript populates this -->
                 </ul>
 
                 <div class="add-person-form">
-                    <input type="text" id="new-person-name" class="drawn-input" placeholder="Name (e.g. Pam)">
-                    <button id="add-person-btn" class="drawn-button action-btn">Add Person</button>
+                    <input type="text" id="new-person-name" class="drawn-input" placeholder="Name (e.g. Inception)">
+                    <button id="add-person-btn" class="drawn-button action-btn">Add Item</button>
                 </div>
             </aside>
 
@@ -84,7 +84,7 @@
                     <h3 class="drawn-title subtitle">Edit Scores</h3>
                     <div id="edit-scores-container">
                         <!-- Javascript populates this -->
-                        <p class="text-muted small">Select a person from the left to edit their scores.</p>
+                        <p class="text-muted small">Select an item from the left to edit its scores.</p>
                     </div>
                 </div>
             </main>

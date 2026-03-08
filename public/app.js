@@ -89,7 +89,7 @@ function renderSidebar() {
 
     const filter = document.getElementById('person-filter');
     const oldFilterVal = filter.value;
-    filter.innerHTML = '<option value="all">Everyone</option>';
+    filter.innerHTML = '<option value="all">All Items</option>';
 
     state.data.forEach((p, idx) => {
         const li = document.createElement('li');
@@ -325,7 +325,7 @@ function renderEditScores() {
     const container = document.getElementById('edit-scores-container');
 
     if (state.selectedPersonId === 'all') {
-        container.innerHTML = '<p class="text-muted small">Select a single person from the sidebar or dropdown to edit their scores.</p>';
+        container.innerHTML = '<p class="text-muted small">Select a single item from the sidebar or dropdown to edit its scores.</p>';
         return;
     }
 

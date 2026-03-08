@@ -26,12 +26,12 @@ bot.start(async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const token = uuidv4();
     await runQuery(`INSERT OR IGNORE INTO users (chat_id, username, web_token) VALUES (?, ?, ?)`, [chatId, ctx.from.username || '', token]);
-    const helpText = `Welcome to Relationship Analytics! 📊\n\nI am your personal assistant for tracking and analyzing your relationships over time.\n\nHere is what you can do:\n/addperson <name> - Add someone to track\n/removeperson <name> - Remove someone from tracking\n/list - View your relationships and their latest scores\n/viewperson <name> - View all score history for a specific person\n/scorenow - Give a score to your relationships right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this list of commands again`;
+    const helpText = `Welcome to Favorite Things Tracker! 📊\n\nI am your personal assistant for tracking and analyzing your favorite things (movies, series, relationships, etc.) over time.\n\nHere is what you can do:\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this list of commands again`;
     ctx.reply(helpText);
 });
 
 bot.command('help', (ctx) => {
-    const helpText = `Here is what you can do:\n/addperson <name> - Add someone to track\n/removeperson <name> - Remove someone from tracking\n/list - View your relationships and their latest scores\n/viewperson <name> - View all score history for a specific person\n/scorenow - Give a score to your relationships right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this message again`;
+    const helpText = `Here is what you can do:\n/add <name> - Add something to track\n/remove <name> - Remove something from tracking\n/list - View your favorites and their latest scores\n/view <name> - View all score history for a specific thing\n/scorenow - Give a score to your favorites right now\n/setcycle [daily|weekly] [HH:MM] - Set a notification schedule\n/webapp - Get a magic link to view your analytics dashboard\n/help - Show this message again`;
     ctx.reply(helpText);
 });
 
@@ -39,9 +39,9 @@ bot.command('list', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
     if (persons.length === 0) {
-        return ctx.reply('You have no people in your list. Use /addperson to add someone.');
+        return ctx.reply('You have no items in your list. Use /add to add something.');
     }
-    let msg = '📋 Your Relationships:\n\n';
+    let msg = '📋 Your Favorites:\n\n';
     for (let p of persons) {
         const scores = await getQuery(`SELECT score, date FROM scores WHERE person_id = ? ORDER BY date DESC LIMIT 1`, [p.id]);
         if (scores.length > 0) {
@@ -53,31 +53,31 @@ bot.command('list', async (ctx) => {
     ctx.reply(msg);
 });
 
-bot.command('addperson', async (ctx) => {
+bot.command(['add', 'addperson'], async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
-    if (!name) return ctx.reply('Please specify a name: /addperson John');
+    if (!name) return ctx.reply('Please specify a name: /add Inception');
     await runQuery(`INSERT INTO persons (chat_id, name) VALUES (?, ?)`, [chatId, name]);
     ctx.reply(`Added ${name} to your tracking list.`);
 });
 
-bot.command('removeperson', async (ctx) => {
+bot.command(['remove', 'removeperson'], async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
-    if (!name) return ctx.reply('Please specify a name: /removeperson John');
+    if (!name) return ctx.reply('Please specify a name: /remove Inception');
     await runQuery(`DELETE FROM persons WHERE chat_id = ? AND name = ?`, [chatId, name]);
     ctx.reply(`Removed ${name} from your list.`);
 });
 
-bot.command('viewperson', async (ctx) => {
+bot.command(['view', 'viewperson'], async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const name = ctx.message.text.split(' ').slice(1).join(' ').trim();
-    if (!name) return ctx.reply('Please specify a name: /viewperson John');
+    if (!name) return ctx.reply('Please specify a name: /view Inception');
 
     // Find the person
     const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? AND name = ? COLLATE NOCASE`, [chatId, name]);
     if (persons.length === 0) {
-        return ctx.reply(`Could not find a person named "${name}" in your list.`);
+        return ctx.reply(`Could not find "${name}" in your list.`);
     }
 
     const person = persons[0];
@@ -110,7 +110,7 @@ bot.command('webapp', async (ctx) => {
             await runQuery(`UPDATE users SET web_token = ? WHERE chat_id = ?`, [token, chatId]);
         }
         const url = `${process.env.APP_URL || 'http://localhost:3000'}/?token=${token}`;
-        ctx.reply(`Click here to open your Relationship Analytics dashboard:\n\n${url}`);
+        ctx.reply(`Click here to open your Favorite Things Tracker dashboard:\n\n${url}`);
     } else {
         ctx.reply('Please use /start first to register.');
     }
@@ -141,12 +141,12 @@ async function startScoringFlow(chatId, ctx = null, date = null) {
     }
     const persons = await getQuery(`SELECT id, name FROM persons WHERE chat_id = ? ORDER BY id ASC`, [chatId]);
     if (persons.length === 0) {
-        if (ctx) ctx.reply('You have no people in your list. Use /addperson to add someone.');
+        if (ctx) ctx.reply('You have nothing in your list. Use /add to add something.');
         return;
     }
     await runQuery(`INSERT OR REPLACE INTO pending_scores (chat_id, person_index, date) VALUES (?, ?, ?)`, [chatId, 0, date]);
     const name = persons[0].name;
-    const msg = `It's time to score your relationship with ${name} for ${date}! Reply with a score out of 10.`;
+    const msg = `It's time to score ${name} for ${date}! Reply with a score out of 10.`;
     if (ctx) {
         ctx.reply(msg);
     } else {
